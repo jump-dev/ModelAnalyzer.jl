@@ -33,6 +33,12 @@ function test_no_solution()
     @test_throws ErrorException ModelAnalyzer.Feasibility.dual_feasibility_report(
         model,
     )
+    # non linear not accepted
+    @constraint(model, c, x^4 >= 0) # this will make the model non-linear
+    @test_throws ErrorException ModelAnalyzer.Feasibility.dual_feasibility_report(
+        model,
+        Dict(), # to skip dual solutions error
+    )
 end
 
 function test_only_bounds()
@@ -46,6 +52,8 @@ function test_only_bounds()
         Dict(LowerBoundRef(x) => 1.0),
     )
     @test isempty(report)
+
+    return
 end
 
 function test_no_lb()
@@ -169,6 +177,64 @@ function test_analyse_simple()
     return
 end
 
+function test_analyse_simple_direct()
+    model = direct_model(HiGHS.Optimizer())
+    set_silent(model)
+    @variable(model, x)
+    @constraint(model, c, x >= 0)
+    @objective(model, Min, 2 * x)
+
+    optimize!(model)
+
+    data = ModelAnalyzer.analyze(ModelAnalyzer.Feasibility.Analyzer(), model)
+
+    list = ModelAnalyzer.list_of_issue_types(data)
+
+    @test length(list) == 0
+
+    return
+end
+
+function test_with_interval()
+    model = Model(HiGHS.Optimizer)
+    set_silent(model)
+    @variable(model, x >= 1)
+    @constraint(model, c, 2 * x in MOI.Interval(0.0, 3.0))
+    @objective(model, Min, x)
+    optimize!(model)
+    @test !ModelAnalyzer.Feasibility._can_dualize(model)
+    # TODO this should eb a waning at least
+    data = ModelAnalyzer.analyze(ModelAnalyzer.Feasibility.Analyzer(), model)
+    return
+end
+
+function test_analyse_many_constraint_types()
+    model = Model(HiGHS.Optimizer)
+    set_silent(model)
+    @variable(model, x >= 1)
+    @variable(model, y <= 0)
+    @variable(model, z == 0)
+    @variable(model, w)
+    @variable(model, 0 <= v <= 1)
+    @constraint(model, c1, x >= 0)
+    @constraint(model, c2, x <= 10)
+    @constraint(model, c3, x == 5)
+    @constraint(model, c4, y >= -1)
+    @constraint(model, c5, w == 3)
+    @constraint(model, c6, [2v] in Nonpositives()) # this should be redundant as z is fixed to 0
+    @objective(model, Min, x)
+
+    optimize!(model)
+
+    data = ModelAnalyzer.analyze(ModelAnalyzer.Feasibility.Analyzer(), model)
+
+    list = ModelAnalyzer.list_of_issue_types(data)
+
+    @test length(list) == 0
+
+    return
+end
+
 function test_analyse_mip()
     model = Model(HiGHS.Optimizer)
     set_silent(model)
@@ -186,6 +252,11 @@ function test_analyse_mip()
 
     ModelAnalyzer.summarize(data)
 
+    buf = IOBuffer()
+    Base.show(buf, data)
+    str = String(take!(buf))
+    @test str == "Feasibility analysis found 0 issues"
+
     return
 end
 
@@ -196,9 +267,18 @@ function test_analyse_no_opt()
     @constraint(model, c, x >= 0)
     @objective(model, Min, x)
 
+    # test no primal point
     @test_throws ErrorException ModelAnalyzer.analyze(
         ModelAnalyzer.Feasibility.Analyzer(),
         model,
+    )
+
+    # test no dual point
+    @test_throws ErrorException ModelAnalyzer.analyze(
+        ModelAnalyzer.Feasibility.Analyzer(),
+        model,
+        primal_point = Dict(x => 1.0),
+        dual_check = true,
     )
 
     data = ModelAnalyzer.analyze(
@@ -263,6 +343,39 @@ function test_analyse_no_opt()
     ModelAnalyzer.summarize(data)
 
     ModelAnalyzer.summarize(data, verbose = false)
+
+    return
+end
+
+# these tests are harder to permorm with a real solver as they tipically
+# return coherent objectives
+function test_lowlevel_mismatch()
+    buf = IOBuffer()
+    issues = []
+    push!(issues, ModelAnalyzer.Feasibility.PrimalObjectiveMismatch(0.0, 1.0))
+    push!(issues, ModelAnalyzer.Feasibility.DualObjectiveMismatch(0.0, 1.0))
+    push!(issues, ModelAnalyzer.Feasibility.PrimalDualSolverMismatch(0.0, 1.0))
+    for verbose in (true, false)
+        ModelAnalyzer.summarize(
+            buf,
+            ModelAnalyzer.Feasibility.PrimalObjectiveMismatch,
+            verbose = verbose,
+        )
+        ModelAnalyzer.summarize(
+            buf,
+            ModelAnalyzer.Feasibility.DualObjectiveMismatch,
+            verbose = verbose,
+        )
+        ModelAnalyzer.summarize(
+            buf,
+            ModelAnalyzer.Feasibility.PrimalDualSolverMismatch,
+            verbose = verbose,
+        )
+        for issue in issues
+            # ensure we can summarize each issue type
+            ModelAnalyzer.summarize(buf, issue, verbose = verbose)
+        end
+    end
 
     return
 end
