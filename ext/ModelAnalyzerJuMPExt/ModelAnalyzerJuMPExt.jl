@@ -5,15 +5,15 @@
 
 module ModelAnalyzerJuMPExt
 
-import ModelAnalyzer
 import JuMP
 import MathOptInterface as MOI
+import ModelAnalyzer
 
 function ModelAnalyzer.analyze(
-    analyzer::T,
+    analyzer::ModelAnalyzer.AbstractAnalyzer,
     model::JuMP.GenericModel;
     kwargs...,
-) where {T<:ModelAnalyzer.AbstractAnalyzer}
+)
     moi_model = JuMP.backend(model)
     result = ModelAnalyzer.analyze(analyzer, moi_model; kwargs...)
     return result
