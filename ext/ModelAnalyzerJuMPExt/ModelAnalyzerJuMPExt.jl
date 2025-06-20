@@ -40,6 +40,13 @@ function ModelAnalyzer._name(ref::MOI.ConstraintIndex, model::JuMP.GenericModel)
     return "$jump_ref"
 end
 
+function ModelAnalyzer._show(ref::MOI.ConstraintIndex, model::JuMP.GenericModel)
+    jump_ref = JuMP.constraint_ref_with_index(model, ref)
+    io = IOBuffer()
+    show(io, jump_ref)
+    return String(take!(io))
+end
+
 """
     variable(issue::ModelAnalyzer.AbstractIssue, model::JuMP.GenericModel)
 

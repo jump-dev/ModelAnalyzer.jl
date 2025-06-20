@@ -248,11 +248,13 @@ function ModelAnalyzer._verbose_summarize(
     issue::IrreducibleInfeasibleSubset,
     model,
 )
-    return print(
-        io,
-        "Irreducible Infeasible Subset: ",
-        join(map(x -> ModelAnalyzer._name(x, model), issue.constraint), ", "),
-    )
+    print(io, "Irreducible Infeasible Subset: ")
+    for constraint in issue.constraint
+        println(io)
+        print(io, "   ")
+        print(io, ModelAnalyzer._show(constraint, model))
+    end
+    return
 end
 
 function ModelAnalyzer.list_of_issues(data::Data, ::Type{InfeasibleBounds})

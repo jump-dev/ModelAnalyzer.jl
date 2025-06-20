@@ -219,6 +219,10 @@ function _name(ref, ::Nothing)
     return "$ref"
 end
 
+function _show(ref::MOI.ConstraintIndex, model)
+    return _name(ref, model)
+end
+
 include("Numerical/Numerical.jl")
 include("Feasibility/Feasibility.jl")
 include("Infeasibility/Infeasibility.jl")
